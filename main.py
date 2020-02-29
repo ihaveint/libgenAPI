@@ -4,7 +4,32 @@ import logging
 from telegram.ext import CommandHandler
 from telegram.ext import MessageHandler, Filters
 import urllib.request
+import logging
+import os
 import sys
+
+logging.basicConfig(level=logging.INFO,
+                    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger()
+
+mode = os.getenv("MODE")
+TOKEN = os.getenv("TOKEN")
+logging.error(mode)
+if mode == "dev":
+    def run(updater):
+        updater.start_polling()
+elif mode == "prod":
+    def run(updater):
+        PORT = int(os.environ.get("PORT", "8443"))
+        HEROKU_APP_NAME = os.environ.get("HEROKU_APP_NAME")
+        updater.start_webhook(listen="0.0.0.0",
+                              port=PORT,
+                              url_path=TOKEN)
+        updater.bot.set_webhook("https://{}.herokuapp.com/{}".format(HEROKU_APP_NAME, TOKEN))
+else:
+    logger.error("No MODE specified!")
+    sys.exit(1)
+
 
 def start(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot, please talk to me!")
@@ -39,10 +64,11 @@ def scrape_download_link(book_name):
         if tds[8].text != book_format:
             continue
 
-        next_page = get_href(tds[10])
+        next_page = get_href(tds[9])
+        # logging.info(next_page)
         soup = BeautifulSoup(urllib.request.urlopen(next_page))
         for link in soup.find_all('a'):
-            return link['href']
+            return "http://93.174.95.29/" + link['href']
 
     return "unfortunately we didn't found the book ... maybe you didn't write the name correctly?"
 
@@ -53,16 +79,17 @@ def get_link(update, context):
 
 
 def main():
-    updater = Updater(token=sys.argv[1], use_context=True)
+    logger.info("Starting bot")
+    updater = Updater(TOKEN, use_context=True)
     dispatcher = updater.dispatcher
-    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        level=logging.INFO)
     start_handler = CommandHandler('start', start)
     dispatcher.add_handler(start_handler)
     download_handler = MessageHandler(Filters.text, get_link)
     dispatcher.add_handler(download_handler)
-    updater.start_polling()
+    # updater.start_polling()
+    run(updater)
 
 
 if __name__ == '__main__':
     main()
+
